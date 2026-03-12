@@ -1,62 +1,44 @@
 #include "vehicle_model/kinematic_bicycle.h"
 
-// All libraries is defined in the header file, so we don't need to include any library here. We just need to include the header file which contains the class definition and its member functions declaration. The implementation of the member functions is done in this .cpp file.
-// #include <pybind11/pybind11.h>
-// #include <pybind11/numpy.h>   // For NumPy array support
-// #include <pybind11/stl.h>     // For dict/vector conversion
 
-// #include <iostream>
-// #include <cmath>
-// #include <utility> // For std::pair
-// #include <Eigen/Dense> // For matrix operations
-// #include <algorithm> // For std::clamp
+// Constructor to initialize dt and l
+KinematicBicycle::KinematicBicycle(double dt, double l) : dt(dt), l(l) {}
 
-// namespace py = pybind11;
+// State transition function
+// use tuple for getting 3+ more return values from a function
+std::tuple<Eigen::Vector3d, Eigen::Vector3d> KinematicBicycle::state_transition(double x, double y, double psi, double vx, double omega_z){
+    double vx_safe = std::max(vx, 0.003); // Ensure velocity is slightly greater than zero to avoid division by zero
+    double max_arg = M_PI / 2;
+    double min_arg = -M_PI / 2;
+    double clip_val = (omega_z * l) / vx_safe; // Calculate the argument for atan2
+    double arg = std::clamp(clip_val, min_arg, max_arg); // Clip the argument to the valid range for atan2
+    double beta = std::atan(arg); // Calculate the slip angle beta
 
-class KinematicBicycle {
-
-public:
-    double dt;  // time step
-    double l;   // wheelbase
-
-    // Constructor to initialize dt and l
-    KinematicBicycle(double dt, double l) : dt(dt), l(l) {}
-
-    // State transition function
-    // use tuple for getting 3+ more return values from a function
-    std::tuple<Eigen::Vector3d, Eigen::Vector3d> state_transition(double x, double y, double vx, double omega_z, double psi){
-        double vx_safe = std::max(vx, 0.003); // Ensure velocity is slightly greater than zero to avoid division by zero
-        double max_arg = M_PI / 2;
-        double min_arg = -M_PI / 2;
-        double clip_val = (omega_z * l) / vx_safe; // Calculate the argument for atan2
-        double arg = std::clamp(clip_val, min_arg, max_arg); // Clip the argument to the valid range for atan2
-        double beta = std::atan(arg); // Calculate the slip angle beta
-
-        // Calculate the predicted state
-        Eigen::Vector3d state_pred(3); // [x, y, psi], declare the size first to avoid any error later
+    // Calculate the predicted state
+    Eigen::Vector3d state_pred; // [x, y, psi], declare the size first to avoid any error later
         state_pred << x + (vx * cos(psi + beta) * dt),
-                      y + (vx * sin(psi + beta) * dt),
-                      psi + (omega_z * dt); // Assuming constant angular velocity
+                    y + (vx * sin(psi + beta) * dt),
+                    psi + (omega_z * dt); // Assuming constant angular velocity
 
-        // Calculate the jaciobian variable 
-        // << insertion operator 
-        Eigen::Vector3d jacobian_var(3);
-        jacobian_var << beta,
-                        psi,
-                        vx; // Partial derivative of state with respect to omega_z  
+    // Calculate the jaciobian variable 
+    // << insertion operator 
+    Eigen::Vector3d jacobian_var;
+    jacobian_var << beta,
+                    psi,
+                    vx; // Partial derivative of state with respect to omega_z  
 
-        // Check for NaN values in the predicted state
-        if (std::isnan(state_pred(0)) || std::isnan(state_pred(1)) || std::isnan(state_pred(2))) {
-            throw std::runtime_error("Predicted state contains NaN values. Check input parameters.");
-        }
-
-        if (std::isnan(jacobian_var(0)) || std::isnan(jacobian_var(1)) || std::isnan(jacobian_var(2))) {
-            throw std::runtime_error("Jacobian contains NaN values. Check input parameters.");
-        }
-
-        return std::make_tuple(state_pred, jacobian_var); // Return the predicted state and Jacobian as a tuple
+    // Check for NaN values in the predicted state
+    if (std::isnan(state_pred(0)) || std::isnan(state_pred(1)) || std::isnan(state_pred(2))) {
+        throw std::runtime_error("Predicted state contains NaN values. Check input parameters.");
     }
-};
+
+    if (std::isnan(jacobian_var(0)) || std::isnan(jacobian_var(1)) || std::isnan(jacobian_var(2))) {
+        throw std::runtime_error("Jacobian contains NaN values. Check input parameters.");
+    }
+
+    return std::make_tuple(state_pred, jacobian_var); // Return the predicted state and Jacobian as a tuple
+}
+
 
 /* How to access the state_pred and jacobian_var from the tuple returned by state_transition function:  
 // Option A — structured binding (C++17)
